@@ -23,7 +23,7 @@ app.get('/', (req, res) => {
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/users', require('./routes/user.routes'));
 app.use('/api/categories', require('./routes/category.routes'));
-// app.use('/api/products', require('./routes/product.routes'));
+app.use('/api/products', require('./routes/product.routes'));
 // app.use('/api/suppliers', require('./routes/supplier.routes'));
 // app.use('/api/stock', require('./routes/stock.routes'));
 // app.use('/api/sales', require('./routes/sales.routes'));
