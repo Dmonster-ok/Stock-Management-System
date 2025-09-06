@@ -27,6 +27,11 @@ app.use('/api/products', require('./routes/product.routes'));
 app.use('/api/suppliers', require('./routes/supplier.routes'));
 app.use('/api/stock', require('./routes/stockTransaction.routes'));
 app.use('/api/sales', require('./routes/invoice.routes'));
+app.use('/api/unit-types', require('./routes/unitType.routes'));
+app.use('/api/product-batches', require('./routes/productBatch.routes'));
+app.use('/api/purchase-orders', require('./routes/purchaseOrder.routes'));
+app.use('/api/reports', require('./routes/reports.routes'));
+app.use('/api/backup', require('./routes/backup.routes'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {

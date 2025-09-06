@@ -4,28 +4,49 @@ class Product {
   constructor(product) {
     this.id = product.id;
     this.name = product.name;
+    this.sku = product.sku;
+    this.barcode = product.barcode;
     this.description = product.description;
     this.category_id = product.category_id;
+    this.unit_type_id = product.unit_type_id;
     this.cost_price = product.cost_price;
     this.selling_price = product.selling_price;
     this.current_stock = product.current_stock;
     this.minimum_stock = product.minimum_stock;
+    this.maximum_stock = product.maximum_stock;
+    this.reorder_point = product.reorder_point;
+    this.has_batches = product.has_batches;
+    this.has_expiry = product.has_expiry;
+    this.shelf_life_days = product.shelf_life_days;
+    this.is_active = product.is_active;
     this.created_at = product.created_at;
+    this.updated_at = product.updated_at;
   }
 
   static async create(newProduct) {
     try {
       const [result] = await pool.execute(
-        `INSERT INTO products (name, description, category_id, cost_price, selling_price, 
-         current_stock, minimum_stock) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO products (name, sku, barcode, description, category_id, unit_type_id, 
+         cost_price, selling_price, current_stock, minimum_stock, maximum_stock, 
+         reorder_point, has_batches, has_expiry, shelf_life_days, is_active) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           newProduct.name,
+          newProduct.sku,
+          newProduct.barcode || null,
           newProduct.description || null,
           newProduct.category_id,
+          newProduct.unit_type_id || null,
           newProduct.cost_price,
           newProduct.selling_price,
           newProduct.current_stock || 0,
-          newProduct.minimum_stock || 0
+          newProduct.minimum_stock || 0,
+          newProduct.maximum_stock || null,
+          newProduct.reorder_point || null,
+          newProduct.has_batches || false,
+          newProduct.has_expiry || false,
+          newProduct.shelf_life_days || null,
+          newProduct.is_active !== undefined ? newProduct.is_active : true
         ]
       );
 
@@ -39,9 +60,10 @@ class Product {
   static async findById(id) {
     try {
       const [rows] = await pool.execute(`
-        SELECT p.*, c.name as category_name 
+        SELECT p.*, c.name as category_name, ut.name as unit_name, ut.abbreviation as unit_abbr
         FROM products p 
         LEFT JOIN categories c ON p.category_id = c.id 
+        LEFT JOIN unit_types ut ON p.unit_type_id = ut.id
         WHERE p.id = ?
       `, [id]);
       return rows.length ? rows[0] : null;
@@ -62,9 +84,10 @@ class Product {
   static async getAll(options = {}) {
     try {
       let query = `
-        SELECT p.*, c.name as category_name 
+        SELECT p.*, c.name as category_name, ut.name as unit_name, ut.abbreviation as unit_abbr
         FROM products p 
         LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN unit_types ut ON p.unit_type_id = ut.id
       `;
       const values = [];
 
@@ -81,8 +104,16 @@ class Product {
       }
 
       if (options.search) {
-        conditions.push('(p.name LIKE ? OR p.description LIKE ?)');
-        values.push(`%${options.search}%`, `%${options.search}%`);
+        conditions.push('(p.name LIKE ? OR p.description LIKE ? OR p.sku LIKE ?)');
+        values.push(`%${options.search}%`, `%${options.search}%`, `%${options.search}%`);
+      }
+
+      if (options.is_active !== undefined) {
+        conditions.push('p.is_active = ?');
+        values.push(options.is_active);
+      } else {
+        // Default to active products only
+        conditions.push('p.is_active = true');
       }
 
       if (conditions.length > 0) {
@@ -257,8 +288,83 @@ class Product {
           SUM(current_stock * cost_price) as total_stock_value,
           COUNT(CASE WHEN current_stock <= minimum_stock THEN 1 END) as low_stock_count
         FROM products
+        WHERE is_active = true
       `);
       return rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async findBySku(sku) {
+    try {
+      const [rows] = await pool.execute(`
+        SELECT p.*, c.name as category_name, ut.name as unit_name, ut.abbreviation as unit_abbr
+        FROM products p 
+        LEFT JOIN categories c ON p.category_id = c.id 
+        LEFT JOIN unit_types ut ON p.unit_type_id = ut.id
+        WHERE p.sku = ?
+      `, [sku]);
+      return rows.length ? rows[0] : null;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async findByBarcode(barcode) {
+    try {
+      const [rows] = await pool.execute(`
+        SELECT p.*, c.name as category_name, ut.name as unit_name, ut.abbreviation as unit_abbr
+        FROM products p 
+        LEFT JOIN categories c ON p.category_id = c.id 
+        LEFT JOIN unit_types ut ON p.unit_type_id = ut.id
+        WHERE p.barcode = ?
+      `, [barcode]);
+      return rows.length ? rows[0] : null;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async getExpiredBatches() {
+    try {
+      const [rows] = await pool.execute(`
+        SELECT p.*, pb.*, c.name as category_name
+        FROM products p
+        JOIN product_batches pb ON p.id = pb.product_id
+        LEFT JOIN categories c ON p.category_id = c.id
+        WHERE pb.expiry_date < CURDATE() AND pb.available_quantity > 0
+        ORDER BY pb.expiry_date ASC
+      `);
+      return rows;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async getProductsWithSuppliers(productId = null) {
+    try {
+      let query = `
+        SELECT p.*, c.name as category_name, ut.name as unit_name, ut.abbreviation as unit_abbr,
+               ps.supplier_id, s.name as supplier_name, ps.supplier_price, ps.is_preferred
+        FROM products p 
+        LEFT JOIN categories c ON p.category_id = c.id 
+        LEFT JOIN unit_types ut ON p.unit_type_id = ut.id
+        LEFT JOIN product_suppliers ps ON p.id = ps.product_id AND ps.is_active = true
+        LEFT JOIN suppliers s ON ps.supplier_id = s.id
+        WHERE p.is_active = true
+      `;
+      
+      const values = [];
+      if (productId) {
+        query += ' AND p.id = ?';
+        values.push(productId);
+      }
+      
+      query += ' ORDER BY p.name, ps.is_preferred DESC';
+      
+      const [rows] = await pool.execute(query, values);
+      return rows;
     } catch (error) {
       throw error;
     }

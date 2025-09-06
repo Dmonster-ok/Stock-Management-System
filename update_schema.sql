@@ -1,6 +1,17 @@
--- Create database
-CREATE DATABASE IF NOT EXISTS stock_management;
 USE stock_management;
+
+-- Drop existing tables if they exist
+DROP TABLE IF EXISTS invoice_items;
+DROP TABLE IF EXISTS invoices;
+DROP TABLE IF EXISTS stock_transactions;
+DROP TABLE IF EXISTS product_batches;
+DROP TABLE IF EXISTS product_attributes;
+DROP TABLE IF EXISTS product_suppliers;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS unit_types;
+DROP TABLE IF EXISTS suppliers;
+DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS users;
 
 -- Users table
 CREATE TABLE users (
@@ -128,106 +139,28 @@ CREATE TABLE stock_transactions (
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
--- Invoices table (Enhanced)
+-- Invoices table
 CREATE TABLE invoices (
     id INT PRIMARY KEY AUTO_INCREMENT,
     invoice_number VARCHAR(20) UNIQUE NOT NULL,
     customer_name VARCHAR(100) NOT NULL,
-    customer_email VARCHAR(100),
-    customer_phone VARCHAR(20),
-    customer_address TEXT,
     invoice_date DATE NOT NULL,
-    due_date DATE,
-    subtotal DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-    discount_type ENUM('percentage', 'fixed') DEFAULT 'percentage',
-    discount_value DECIMAL(10,2) DEFAULT 0.00,
-    discount_amount DECIMAL(12,2) DEFAULT 0.00,
-    tax_rate DECIMAL(5,2) DEFAULT 0.00,
-    tax_amount DECIMAL(12,2) DEFAULT 0.00,
-    total_amount DECIMAL(12,2) NOT NULL,
-    payment_status ENUM('Paid', 'Unpaid', 'Partial', 'Overdue') NOT NULL DEFAULT 'Unpaid',
-    payment_method ENUM('Cash', 'Card', 'Bank_Transfer', 'Cheque', 'Other') DEFAULT 'Cash',
-    paid_amount DECIMAL(12,2) DEFAULT 0.00,
-    notes TEXT,
+    total_amount DECIMAL(10,2) NOT NULL,
+    payment_status ENUM('Paid', 'Unpaid') NOT NULL DEFAULT 'Unpaid',
     created_by INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
--- Invoice Items table (Enhanced)
+-- Invoice Items table
 CREATE TABLE invoice_items (
     id INT PRIMARY KEY AUTO_INCREMENT,
     invoice_id INT NOT NULL,
     product_id INT NOT NULL,
-    product_name VARCHAR(100) NOT NULL,
-    quantity DECIMAL(10,3) NOT NULL,
+    quantity INT NOT NULL,
     unit_price DECIMAL(10,2) NOT NULL,
-    discount_percentage DECIMAL(5,2) DEFAULT 0.00,
-    discount_amount DECIMAL(10,2) DEFAULT 0.00,
-    line_total DECIMAL(12,2) NOT NULL,
-    notes TEXT,
+    total_price DECIMAL(10,2) NOT NULL,
     FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
-);
-
--- Purchase Orders table
-CREATE TABLE purchase_orders (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    po_number VARCHAR(20) UNIQUE NOT NULL,
-    supplier_id INT NOT NULL,
-    order_date DATE NOT NULL,
-    expected_delivery_date DATE,
-    status ENUM('Draft', 'Sent', 'Confirmed', 'Partially_Received', 'Received', 'Cancelled') NOT NULL DEFAULT 'Draft',
-    total_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-    notes TEXT,
-    created_by INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
-);
-
--- Purchase Order Items table
-CREATE TABLE purchase_order_items (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    purchase_order_id INT NOT NULL,
-    product_id INT NOT NULL,
-    quantity DECIMAL(10,3) NOT NULL,
-    unit_cost DECIMAL(10,2) NOT NULL,
-    total_cost DECIMAL(12,2) NOT NULL,
-    received_quantity DECIMAL(10,3) NOT NULL DEFAULT 0,
-    notes TEXT,
-    FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
-);
-
--- Goods Receipts table (tracks actual deliveries against POs)
-CREATE TABLE goods_receipts (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    receipt_number VARCHAR(20) UNIQUE NOT NULL,
-    purchase_order_id INT NOT NULL,
-    received_date DATE NOT NULL,
-    notes TEXT,
-    created_by INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id) ON DELETE RESTRICT,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
-);
-
--- Goods Receipt Items table
-CREATE TABLE goods_receipt_items (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    goods_receipt_id INT NOT NULL,
-    purchase_order_item_id INT NOT NULL,
-    product_id INT NOT NULL,
-    received_quantity DECIMAL(10,3) NOT NULL,
-    unit_cost DECIMAL(10,2) NOT NULL,
-    batch_number VARCHAR(50),
-    expiry_date DATE,
-    notes TEXT,
-    FOREIGN KEY (goods_receipt_id) REFERENCES goods_receipts(id) ON DELETE CASCADE,
-    FOREIGN KEY (purchase_order_item_id) REFERENCES purchase_order_items(id) ON DELETE RESTRICT,
     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
 );
 
@@ -244,14 +177,6 @@ CREATE INDEX idx_stock_transactions_product ON stock_transactions(product_id);
 CREATE INDEX idx_stock_transactions_batch ON stock_transactions(batch_id);
 CREATE INDEX idx_invoice_items_invoice ON invoice_items(invoice_id);
 CREATE INDEX idx_invoice_items_product ON invoice_items(product_id);
-CREATE INDEX idx_purchase_orders_supplier ON purchase_orders(supplier_id);
-CREATE INDEX idx_purchase_orders_status ON purchase_orders(status);
-CREATE INDEX idx_purchase_orders_po_number ON purchase_orders(po_number);
-CREATE INDEX idx_purchase_order_items_po ON purchase_order_items(purchase_order_id);
-CREATE INDEX idx_purchase_order_items_product ON purchase_order_items(product_id);
-CREATE INDEX idx_goods_receipts_po ON goods_receipts(purchase_order_id);
-CREATE INDEX idx_goods_receipt_items_receipt ON goods_receipt_items(goods_receipt_id);
-CREATE INDEX idx_goods_receipt_items_po_item ON goods_receipt_items(purchase_order_item_id);
 
 -- Create demo users
 -- Owner (password: owner123)
@@ -277,11 +202,11 @@ INSERT INTO unit_types (name, abbreviation, type, base_unit) VALUES
 ('Pairs', 'pair', 'Count', false);
 
 -- Update conversion factors for non-base units
-UPDATE unit_types SET conversion_factor = 0.001 WHERE abbreviation = 'g'; -- 1g = 0.001kg
-UPDATE unit_types SET conversion_factor = 0.001 WHERE abbreviation = 'ml'; -- 1ml = 0.001L
-UPDATE unit_types SET conversion_factor = 0.01 WHERE abbreviation = 'cm'; -- 1cm = 0.01m
-UPDATE unit_types SET conversion_factor = 12 WHERE abbreviation = 'doz'; -- 1 dozen = 12 pieces
-UPDATE unit_types SET conversion_factor = 2 WHERE abbreviation = 'pair'; -- 1 pair = 2 pieces
+UPDATE unit_types SET conversion_factor = 0.001 WHERE abbreviation = 'g';
+UPDATE unit_types SET conversion_factor = 0.001 WHERE abbreviation = 'ml';
+UPDATE unit_types SET conversion_factor = 0.01 WHERE abbreviation = 'cm';
+UPDATE unit_types SET conversion_factor = 12 WHERE abbreviation = 'doz';
+UPDATE unit_types SET conversion_factor = 2 WHERE abbreviation = 'pair';
 
 -- Insert sample categories
 INSERT INTO categories (name, description) VALUES 
